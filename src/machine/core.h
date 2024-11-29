@@ -120,10 +120,11 @@ protected:
     QMap<Address, OWNED hwBreak *> hw_breaks {};
     QMap<ExceptionCause, OWNED ExceptionHandler *> ex_handlers;
     Box<ExceptionHandler> ex_default_handler;
+    InstructionFlags prev_inst_flags {};
 
     FetchState fetch(PCInterstage pc, bool skip_break);
     DecodeState decode(const FetchInterstage &);
-    static ExecuteState execute(const DecodeInterstage &);
+    ExecuteState execute(const DecodeInterstage &);
     MemoryState memory(const ExecuteInterstage &);
     WritebackState writeback(const MemoryInterstage &);
 
@@ -138,7 +139,8 @@ protected:
         int mode,
         bool memread,
         bool memwrite,
-        RegisterValue &towrite_val,
+        // RegisterValue &towrite_val,
+        RegisterValueUnion &towrite_val,
         RegisterValue rt_value,
         Address mem_addr);
 };

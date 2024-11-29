@@ -54,7 +54,7 @@ void TestAlu::test_alu64_operate() {
     QCOMPARE(
         alu_combined_operate(
             { .alu_op = op }, AluComponent::ALU, false, modified, operand_a, operand_b),
-        RegisterValue(result));
+        RegisterValueUnion(RegisterValue(result)));
 }
 
 void TestAlu::test_alu32_operate_data() {
@@ -101,7 +101,7 @@ void TestAlu::test_alu32_operate() {
     QCOMPARE(
         alu_combined_operate(
             { .alu_op = op }, AluComponent::ALU, true, modified, operand_a, operand_b),
-        RegisterValue(result));
+        RegisterValueUnion(RegisterValue(result)));
 }
 
 // TODO evaluate the results and inline as literals.
@@ -171,7 +171,7 @@ void TestAlu::test_mul64_operate() {
         alu_combined_operate(
             (AluCombinedOp) { .mul_op = op }, AluComponent::MUL, false, false, operand_a,
             operand_b),
-        RegisterValue(result));
+        RegisterValueUnion(RegisterValue(result)));
 }
 
 /**
@@ -238,7 +238,7 @@ void TestAlu::test_mul32_operate() {
     QCOMPARE(
         alu_combined_operate(
             (AluCombinedOp) { .mul_op = op }, AluComponent::MUL, true, false, operand_a, operand_b),
-        RegisterValue(result));
+        RegisterValueUnion(RegisterValue(result)));
 }
 
 QTEST_APPLESS_MAIN(TestAlu)

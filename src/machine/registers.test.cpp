@@ -2,6 +2,8 @@
 
 #include "machine/registers.h"
 
+#include <array>
+
 using namespace machine;
 
 void TestRegisters::registers_gp0() {
@@ -16,6 +18,14 @@ void TestRegisters::registers_rw_gp() {
     for (int i = 1; i < 32; i++) {
         r.write_gp(i, 0xf00 + i);
         QCOMPARE(r.read_gp(i), RegisterValue(0xf00 + i));
+    }
+}
+
+void TestRegisters::registers_rw_vr() {
+    Registers r;
+    for (int i = 1; i < 32; i++) {
+        r.write_vr(i, VectorRegisterValue(std::array<uint32_t, 32>{0xf00u + i, 0xf00u + i, 0xf00u + i, 0xf00u + i}));
+        QCOMPARE(r.read_vr(i), VectorRegisterValue(std::array<uint32_t, 32>{0xf00u + i, 0xf00u + i, 0xf00u + i, 0xf00u + i}));
     }
 }
 

@@ -52,13 +52,15 @@ private:
 
 class RegValue {
 public:
-    RegValue(svgscene::SimpleTextItem *element, const machine::RegisterValue &data);
+    // RegValue(svgscene::SimpleTextItem *element, const machine::RegisterValue &data);
+    RegValue(svgscene::SimpleTextItem *element, const machine::RegisterValueUnion &data);
     void update();
     static const QString COMPONENT_NAME;
 
 private:
     BORROWED svgscene::SimpleTextItem *const element;
-    const machine::RegisterValue &data;
+    // const machine::RegisterValue &data;
+    const machine::RegisterValueUnion &data;
 };
 
 class RegIdValue {

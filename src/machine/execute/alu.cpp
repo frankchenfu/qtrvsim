@@ -4,19 +4,26 @@
 
 namespace machine {
 
-RegisterValue alu_combined_operate(
+// RegisterValue alu_combined_operate(
+RegisterValueUnion alu_combined_operate(
     AluCombinedOp op,
     AluComponent component,
     bool w_operation,
     bool modified,
-    RegisterValue a,
-    RegisterValue b) {
+    // RegisterValue a,
+    // RegisterValue b) {
+    RegisterValueUnion a,
+    RegisterValueUnion b,
+    uint8_t vl) {
     switch (component) {
     case AluComponent::ALU:
-        return (w_operation) ? alu32_operate(op.alu_op, modified, a, b)
-                             : alu64_operate(op.alu_op, modified, a, b);
+        return RegisterValue((w_operation) ? alu32_operate(op.alu_op, modified, a, b)
+                             : alu64_operate(op.alu_op, modified, a, b));
     case AluComponent::MUL:
-        return (w_operation) ? mul32_operate(op.mul_op, a, b) : mul64_operate(op.mul_op, a, b);
+        return RegisterValue((w_operation) ? mul32_operate(op.mul_op, a, b)
+                             : mul64_operate(op.mul_op, a, b));
+    case AluComponent::VEC:
+        return vec32_operate(op.vec_op, a, b, vl);
     case AluComponent::PASS:
         return a;
     default: qDebug("ERROR, unknown alu component: %hhx", uint8_t(component)); return 0;
@@ -31,7 +38,12 @@ RegisterValue alu_combined_operate(
 constexpr uint64_t SHIFT_MASK32 = 0b011111; // == 31
 constexpr uint64_t SHIFT_MASK64 = 0b111111; // == 63
 
-int64_t alu64_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b) {
+// int64_t alu64_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b) {
+//     uint64_t _a = a.as_u64();
+//     uint64_t _b = b.as_u64();
+int64_t alu64_operate(AluOp op, bool modified, RegisterValueUnion a_raw, RegisterValueUnion b_raw) {
+    RegisterValue a = a_raw.i;
+    RegisterValue b = b_raw.i;
     uint64_t _a = a.as_u64();
     uint64_t _b = b.as_u64();
 
@@ -53,7 +65,12 @@ int64_t alu64_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b)
     }
 }
 
-int32_t alu32_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b) {
+// int32_t alu32_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b) {
+//     uint32_t _a = a.as_u32();
+//     uint32_t _b = b.as_u32();
+int32_t alu32_operate(AluOp op, bool modified, RegisterValueUnion a_raw, RegisterValueUnion b_raw) {
+    RegisterValue a = a_raw.i;
+    RegisterValue b = b_raw.i;
     uint32_t _a = a.as_u32();
     uint32_t _b = b.as_u32();
 
@@ -74,7 +91,11 @@ int32_t alu32_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b)
     }
 }
 
-int64_t mul64_operate(MulOp op, RegisterValue a, RegisterValue b) {
+// int64_t mul64_operate(MulOp op, RegisterValue a, RegisterValue b) {
+int64_t mul64_operate(MulOp op, RegisterValueUnion a_raw, RegisterValueUnion b_raw) {
+    RegisterValue a = a_raw.i;
+    RegisterValue b = b_raw.i;
+
     switch (op) {
     case MulOp::MUL: return a.as_u64() * b.as_u64();
     case MulOp::MULH: return mulh64(a.as_i64(), b.as_i64());
@@ -107,7 +128,11 @@ int64_t mul64_operate(MulOp op, RegisterValue a, RegisterValue b) {
     }
 }
 
-int32_t mul32_operate(MulOp op, RegisterValue a, RegisterValue b) {
+// int32_t mul32_operate(MulOp op, RegisterValue a, RegisterValue b) {
+int32_t mul32_operate(MulOp op, RegisterValueUnion a_raw, RegisterValueUnion b_raw) {
+    RegisterValue a = a_raw.i;
+    RegisterValue b = b_raw.i;
+
     switch (op) {
     case MulOp::MUL: return a.as_u32() * b.as_u32();
     case MulOp::MULH: return ((uint64_t)a.as_i32() * (uint64_t)b.as_i32()) >> 32;
@@ -137,6 +162,75 @@ int32_t mul32_operate(MulOp op, RegisterValue a, RegisterValue b) {
                                               // is defined.
                                  : a.as_u32() % b.as_u32();
     default: qDebug("ERROR, unknown multiplication operation: %hhx", uint8_t(op)); return 0;
+    }
+}
+
+RegisterValueUnion vec32_operate(VecOp op, RegisterValueUnion a, RegisterValueUnion b, uint8_t vl) {
+    switch (op) {
+    case VecOp::VADDVV: {
+        vector_register_storage_t result;
+        for (size_t i = 0; i < vl; i++) {
+            result[i] = a.v[i] + b.v[i];
+        }
+        printf("perform vector addition:\nInputs: [");
+        for (size_t i = 0; i < vl; i++) {
+            printf("%d ", a.v[i]);
+        }
+        printf("] + [");
+        for (size_t i = 0; i < vl; i++) {
+            printf("%d ", b.v[i]);
+        }
+        printf("] = [");
+        for (size_t i = 0; i < vl; i++) {
+            printf("%d ", result[i]);
+        }
+        printf("]\n");
+        return VectorRegisterValue(result);
+    }
+    case VecOp::VADDVI: {
+        vector_register_storage_t result;
+        for (size_t i = 0; i < vl; i++) {
+            result[i] = a.v[i] + b.i.as_u32();
+        }
+        // printf("perform vector addition:\nInputs: [");
+        // for (size_t i = 0; i < vl; i++) {
+        //     printf("%d ", a.v[i]);
+        // }
+        // printf("] + %d = [", b.i.as_u32());
+        // for (size_t i = 0; i < vl; i++) {
+        //     printf("%d ", result[i]);
+        // }
+        // printf("]\n");
+        return VectorRegisterValue(result);
+    }
+    case VecOp::VMULVV: {
+        vector_register_storage_t result;
+        for (size_t i = 0; i < vl; i++) {
+            result[i] = a.v[i] * b.v[i];
+        }
+        printf("perform vector multiplication:\nInputs: [");
+        for (size_t i = 0; i < vl; i++) {
+            printf("%d ", a.v[i]);
+        }
+        printf("] + [");
+        for (size_t i = 0; i < vl; i++) {
+            printf("%d ", b.v[i]);
+        }
+        printf("] = [");
+        for (size_t i = 0; i < vl; i++) {
+            printf("%d ", result[i]);
+        }
+        printf("]\n");
+        return VectorRegisterValue(result);
+    }
+    case VecOp::VREDSUM: {
+        uint32_t result = a.i.as_u32();
+        for (size_t i = 0; i < vl; i++) {
+            result += b.v[i];
+        }
+        return RegisterValue(result);
+    }
+    default: qDebug("ERROR, unknown vector operation: %hhx", uint8_t(op)); return 0;
     }
 }
 

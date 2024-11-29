@@ -106,6 +106,11 @@ bool argdesbycode_filled = fill_argdesbycode();
 #define FLAGS_ALU_T_R_D (IMF_SUPPORTED | IMF_REGWRITE)
 #define FLAGS_ALU_T_R_STD (FLAGS_ALU_T_R_D | IMF_ALU_REQ_RS | IMF_ALU_REQ_RT)
 
+#define FLAGS_VEC_LOAD (FLAGS_ALU_I_LOAD | IMF_VEC)
+#define FLAGS_VEC_STORE (FLAGS_ALU_I_STORE | IMF_VEC | IMF_VEC_RT)
+#define FLAGS_VEC_T_R_STD (IMF_SUPPORTED | IMF_VEC | IMF_REGWRITE | IMF_VEC_RT | IMF_ALU_REQ_RS | IMF_ALU_REQ_RT)
+#define FLAGS_VEC_T_R_I (IMF_SUPPORTED | IMF_VEC | IMF_REGWRITE | IMF_ALU_REQ_RS | IMF_ALU_REQ_RT)
+
 #define FLAGS_AMO_LOAD (FLAGS_ALU_I_LOAD | IMF_AMO)
 // FLAGS_AMO_STORE for store conditional requires IMF_MEMREAD to ensure stalling because
 // forwarding is not possible from memory stage after memory read, TODO to solve better way
@@ -454,6 +459,18 @@ static const struct InstructionMap ENVIRONMENT_AND_BREAKPOINTS_map[] = {
     {"ebreak", IT_I, NOALU, NOMEM, nullptr, {}, 0x00100073, 0xffffffff, { .flags = IMF_SUPPORTED | IMF_EXCEPTION | IMF_EBREAK }, nullptr},
 };
 
+static const struct InstructionMap VEC_map[] = {
+    {"vsetvl", IT_R, NOALU, NOMEM, nullptr, {"d", "s", "t"}, 0x00000057, 0x0000707f, { .flags = FLAGS_ALU_T_R_STD | IMF_VEC_VL }, nullptr},
+    {"vadd.vv", IT_R, { .vec_op=VecOp::VADDVV }, NOMEM, nullptr, {"d", "s", "t"}, 0x00001057, 0x0000707f, { .flags = FLAGS_VEC_T_R_STD }, nullptr},
+    {"vadd.vx", IT_R, { .vec_op=VecOp::VADDVI }, NOMEM, nullptr, {"d", "s", "t"}, 0x00002057, 0x0000707f, { .flags = FLAGS_VEC_T_R_I }, nullptr},
+    {"vadd.vi", IT_I, { .vec_op=VecOp::VADDVI }, NOMEM, nullptr, {"d", "s", "j"}, 0x00003057, 0x0000707f, { .flags = FLAGS_VEC_T_R_I | IMF_ALUSRC }, nullptr},
+    {"vmul.vv", IT_R, { .vec_op=VecOp::VMULVV }, NOMEM, nullptr, {"d", "s", "t"}, 0x00004057, 0x0000707f, { .flags = FLAGS_VEC_T_R_STD | IMF_VEC_MUL }, nullptr},
+    {"vlw.v", IT_I, { .alu_op=AluOp::ADD }, AC_V32, nullptr, {"d", "o(s)"}, 0x00005057, 0x0000707f, { .flags = FLAGS_VEC_LOAD }, nullptr},
+    {"vsw.v", IT_S, { .alu_op=AluOp::ADD }, AC_V32, nullptr, {"t", "q(s)"}, 0x00006057, 0x0000707f, { .flags = FLAGS_VEC_STORE }, nullptr},
+    {"vredsum.vs", IT_R, { .vec_op=VecOp::VREDSUM }, NOMEM, nullptr, {"d", "s", "t"}, 0x00007057, 0x0000707f, { .flags = FLAGS_VEC_T_R_STD | IMF_VEC_REDSUM }, nullptr},
+};
+//0001'0010'0011 00000 101 00001 1010111
+
 // Priviledged system isntructions, only 5-bits (29:25) are decoded for now.
 // Full decode is should cover 128 entries (31:25) but we radly support hypervisor even in future
 static const struct InstructionMap SYSTEM_PRIV_map[] = {
@@ -601,7 +618,8 @@ static const struct InstructionMap I_inst_map[] = {
     IM_UNKNOWN, // NMSUB
     IM_UNKNOWN, // NMADD
     IM_UNKNOWN, // OP-FP
-    IM_UNKNOWN, // reserved
+    // IM_UNKNOWN, // reserved
+    {"vector", IT_R, NOALU, NOMEM, VEC_map, {}, 0x57, 0x7f, { .subfield = {3, 12} }, nullptr}, // VECTOR
     IM_UNKNOWN, // custom-2/rv128
     IM_UNKNOWN, // 48b
     {"branch", IT_B, NOALU, NOMEM, BRANCH_map, {}, 0x63, 0x7f, { .subfield = {3, 12} }, nullptr}, // BRANCH
@@ -635,7 +653,7 @@ static inline const struct InstructionMap &InstructionMapFind(uint32_t code) {
     while (im->subclass != nullptr) {
         im = &im->subclass[im->subfield.decode(code)];
     }
-    if ((code ^ im->code) & im->mask) { return C_inst_unknown; }
+    if ((code ^ im->code) & im->mask) {printf("try to find %08x, but not found (imcode=%08x, immask=%08x)\n", code, im->code, im->mask); return C_inst_unknown; }
     return *im;
 }
 
@@ -922,7 +940,7 @@ void instruction_from_string_build_base() {
 
 static int parse_reg_from_string(const QString &str, uint *chars_taken = nullptr) {
     if (str.size() < 2) { return -1; }
-    if (str.at(0) == 'x') {
+    if (str.at(0) == 'x' || str.at(0) == 'v') {
         int res = 0;
         int ctk = 1;
         for (; ctk < str.size(); ctk += 1) {

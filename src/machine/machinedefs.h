@@ -18,6 +18,9 @@ enum AccessControl {
     AC_U32,
     AC_I64,
     AC_U64,
+    AC_V32,
+    AC_LR_VEC,
+    AC_SC_VEC,
     AC_LR32,
     AC_SC32,
     AC_AMOSWAP32,
@@ -44,8 +47,8 @@ enum AccessControl {
 };
 
 constexpr AccessControl AC_FIRST_REGULAR = AC_I8;
-constexpr AccessControl AC_LAST_REGULAR = AC_U64;
-constexpr AccessControl AC_FIRST_SPECIAL = AC_LR32;
+constexpr AccessControl AC_LAST_REGULAR = AC_V32;
+constexpr AccessControl AC_FIRST_SPECIAL = AC_LR_VEC;
 constexpr AccessControl AC_LAST_SPECIAL = AC_CACHE_OP;
 constexpr AccessControl AC_FISRT_AMO_MODIFY32 = AC_AMOSWAP32;
 constexpr AccessControl AC_LAST_AMO_MODIFY32 = AC_AMOMAXU32;

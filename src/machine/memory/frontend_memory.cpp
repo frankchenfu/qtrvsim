@@ -48,32 +48,76 @@ uint64_t FrontendMemory::read_u64(Address address, AccessEffects type) const {
     return read_generic<uint64_t>(address, type);
 }
 
+bool FrontendMemory::write_vec_u32(
+    Address address,
+    vector_register_storage_t value,
+    uint8_t vl,
+    AccessEffects type) {
+    bool flag = true;
+    for (size_t i = 0; i < vl; i++) {
+        flag &= write_generic<uint32_t>(address + i * sizeof(uint32_t), value[i], type);
+    }
+    // printf("write_vec_u32: ");
+    // for (size_t i = 0; i < vl; i++) {
+    //     printf("%d ", value[i]);
+    // }
+    // printf("\n");
+    return flag;
+}
+
+vector_register_storage_t FrontendMemory::read_vec_u32(
+    Address address,
+    uint8_t vl,
+    AccessEffects type) const {
+    vector_register_storage_t value;
+    for (size_t i = 0; i < vl; i++) {
+        value[i] = read_generic<uint32_t>(address + i * sizeof(uint32_t), type);
+    }
+    // printf("read_vec_u32: ");
+    // for (size_t i = 0; i < vl; i++) {
+    //     printf("%d ", value[i]);
+    // }
+    // printf("\n");
+    return value;
+}
+
 void FrontendMemory::write_ctl(
     enum AccessControl ctl,
     Address offset,
-    RegisterValue value) {
+    // RegisterValue value) {
+    RegisterValueUnion value, uint8_t vl) {
     switch (ctl) {
     case AC_NONE: {
         break;
     }
     case AC_I8:
     case AC_U8: {
-        write_u8(offset, value.as_u8());
+        write_u8(offset, value.i.as_u8());
         break;
     }
     case AC_I16:
     case AC_U16: {
-        write_u16(offset, value.as_u16());
+        write_u16(offset, value.i.as_u16());
         break;
     }
     case AC_I32:
     case AC_U32: {
-        write_u32(offset, value.as_u32());
+        write_u32(offset, value.i.as_u32());
         break;
     }
     case AC_I64:
     case AC_U64: {
-        write_u64(offset, value.as_u64());
+        write_u64(offset, value.i.as_u64());
+        break;
+    }
+    case AC_V32: {
+        // printf("found AC_V32: ");
+        // vector_register_storage_t vec = value.v.as_vec();
+        // for (size_t i = 0; i < vl; i++) {
+        //     printf("%d ", vec[i]);
+        // }
+        // printf("\n");
+        write_vec_u32(offset, value.v.as_vec(), vl);
         break;
     }
     default: {
@@ -84,18 +128,19 @@ void FrontendMemory::write_ctl(
     }
 }
 
-RegisterValue
-FrontendMemory::read_ctl(enum AccessControl ctl, Address address) const {
+RegisterValueUnion
+FrontendMemory::read_ctl(enum AccessControl ctl, Address address, uint8_t vl) const {
     switch (ctl) {
-    case AC_NONE: return 0;
-    case AC_I8: return (int8_t)read_u8(address);
-    case AC_U8: return read_u8(address);
-    case AC_I16: return (int16_t)read_u16(address);
-    case AC_U16: return read_u16(address);
-    case AC_I32: return (int32_t)read_u32(address);
-    case AC_U32: return read_u32(address);
-    case AC_I64: return (int64_t)read_u64(address);
-    case AC_U64: return read_u64(address);
+    case AC_NONE: return RegisterValue(0);
+    case AC_I8: return RegisterValue((int8_t)read_u8(address));
+    case AC_U8: return RegisterValue(read_u8(address));
+    case AC_I16: return RegisterValue((int16_t)read_u16(address));
+    case AC_U16: return RegisterValue(read_u16(address));
+    case AC_I32: return RegisterValue((int32_t)read_u32(address));
+    case AC_U32: return RegisterValue(read_u32(address));
+    case AC_I64: return RegisterValue((int64_t)read_u64(address));
+    case AC_U64: return RegisterValue(read_u64(address));
+    case AC_V32: return VectorRegisterValue(read_vec_u32(address, vl));
     default: {
         throw SIMULATOR_EXCEPTION(
             UnknownMemoryControl, "Trying to read from memory with unknown ctl",

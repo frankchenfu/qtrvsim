@@ -60,6 +60,13 @@ enum InstructionFlags : unsigned {
     // TODO do we want to add those signals to the visualization?
 
     IMF_RV64 = 1L << 24, /**< Mark instructions which are available in 64-bit mode only. */
+
+    // Vector extension
+    IMF_VEC = 1L << 25, /**< Enables vector component of ALU. */
+    IMF_VEC_RT = 1L << 26, /**< Instruction requires RT value for vector operation. */
+    IMF_VEC_VL = 1L << 27, /**< Instruction requires VL value for vector operation. */
+    IMF_VEC_MUL = 1L << 28, /**< Instruction requires MUL value for vector operation. */
+    IMF_VEC_REDSUM = 1L << 29, /**< Instruction requires REDSUM value for vector operation. */
 };
 
 /**

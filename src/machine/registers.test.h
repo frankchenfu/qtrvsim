@@ -9,6 +9,7 @@ class TestRegisters : public QObject {
 public slots:
     static void registers_gp0();
     static void registers_rw_gp();
+    static void registers_rw_vr();
     static void registers_compare();
 };
 

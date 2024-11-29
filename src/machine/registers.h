@@ -45,6 +45,9 @@ inline RegisterId::RegisterId() : RegisterId(0) {}
 inline RegisterId operator"" _reg(unsigned long long value) {
     return { static_cast<uint8_t>(value) };
 }
+inline RegisterId operator"" _vreg(unsigned long long value) {
+    return { static_cast<uint8_t>(value) };
+}
 
 /**
  * Register file
@@ -58,10 +61,15 @@ public:
     Address read_pc() const;        // Return current value of program counter
     void write_pc(Address address); // Absolute jump in program counter
 
+    uint8_t read_vl() const;        // Read vector length register
+    void write_vl(uint8_t len);     // Write vector length register
+
     RegisterValue read_gp(RegisterId reg) const;        // Read general-purpose
                                                         // register
     void write_gp(RegisterId reg, RegisterValue value); // Write general-purpose
                                                         // register
+    VectorRegisterValue read_vr(RegisterId reg) const;  // Read vector register
+    void write_vr(RegisterId reg, VectorRegisterValue value); // Write vector register
 
     bool operator==(const Registers &c) const;
     bool operator!=(const Registers &c) const;
@@ -81,7 +89,9 @@ private:
      * Getters and setters will never try to read or write zero register.
      */
     std::array<RegisterValue, REGISTER_COUNT> gp {};
+    std::array<VectorRegisterValue, REGISTER_COUNT> vr {};
     Address pc {}; // program counter
+    uint8_t vl = 0; // vector length
 };
 
 } // namespace machine

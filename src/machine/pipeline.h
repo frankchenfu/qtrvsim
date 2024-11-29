@@ -55,7 +55,8 @@ public:
 };
 
 struct FetchInternalState {
-    RegisterValue fetched_value = 0;
+    // RegisterValue fetched_value = 0;
+    RegisterValueUnion fetched_value = 0;
     unsigned excause_num = 0;
 };
 
@@ -81,13 +82,19 @@ struct DecodeInterstage {
     Address inst_addr = STAGEADDR_NONE;
     Address next_inst_addr = 0_addr;
     Address predicted_next_inst_addr = 0_addr;
-    RegisterValue val_rs = 0;        // Value from register rs
-    RegisterValue val_rs_orig = 0;   // Value from register rs1 without forwarding
-    RegisterValue val_rt = 0;        // Value from register rt
-    RegisterValue val_rt_orig = 0;   // Value from register rs1 without forwarding
-    RegisterValue immediate_val = 0; // Sign-extended immediate value
-                                     // rd according to regd)
-    RegisterValue csr_read_val = 0;  // Value read from csr
+    // RegisterValue val_rs = 0;        // Value from register rs
+    // RegisterValue val_rs_orig = 0;   // Value from register rs1 without forwarding
+    // RegisterValue val_rt = 0;        // Value from register rt
+    // RegisterValue val_rt_orig = 0;   // Value from register rs1 without forwarding
+    // RegisterValue immediate_val = 0; // Sign-extended immediate value
+    //                                  // rd according to regd)
+    // RegisterValue csr_read_val = 0;  // Value read from csr
+    RegisterValueUnion val_rs = 0;       // Value from register rs
+    RegisterValueUnion val_rs_orig = 0;  // Value from register rs1 without forwarding
+    RegisterValueUnion val_rt = 0;       // Value from register rt
+    RegisterValueUnion val_rt_orig = 0;  // Value from register rs1 without forwarding
+    RegisterValueUnion immediate_val = 0; // Sign-extended immediate value
+    RegisterValueUnion csr_read_val = 0;  // Value read from csr
     CSR::Address csr_address = CSR::Address(0);
     ExceptionCause excause = EXCAUSE_NONE;
     ForwardFrom ff_rs = FORWARD_NONE;
@@ -132,8 +139,10 @@ struct DecodeInternalState {
      */
     unsigned alu_op_num = 0;
     unsigned excause_num = 0;
-    RegisterValue inst_bus = 0;
+    // RegisterValue inst_bus = 0;
+    RegisterValueUnion inst_bus = 0;
     bool alu_mul = false;
+    bool alu_vec = false;
 };
 
 struct DecodeState {
@@ -159,10 +168,14 @@ struct ExecuteInterstage {
     Address next_inst_addr = 0_addr;
     Address predicted_next_inst_addr = 0_addr;
     Address branch_jal_target = 0_addr; //> Potential branch target (inst_addr + 4 + imm).
-    RegisterValue val_rt = 0;
-    RegisterValue alu_val = 0; // Result of ALU execution
-    RegisterValue immediate_val = 0;
-    RegisterValue csr_read_val = 0;
+    // RegisterValue val_rt = 0;
+    // RegisterValue alu_val = 0; // Result of ALU execution
+    // RegisterValue immediate_val = 0;
+    // RegisterValue csr_read_val = 0;
+    RegisterValueUnion val_rt = 0;
+    RegisterValueUnion alu_val = 0; // Result of ALU execution
+    RegisterValueUnion immediate_val = 0;
+    RegisterValueUnion csr_read_val = 0;
     CSR::Address csr_address = CSR::Address(0);
     ExceptionCause excause = EXCAUSE_NONE;
     AccessControl memctl = AC_NONE;
@@ -186,11 +199,16 @@ public:
 };
 
 struct ExecuteInternalState {
-    RegisterValue alu_src1 = 0;
-    RegisterValue alu_src2 = 0;
-    RegisterValue immediate = 0;
-    RegisterValue rs = 0;
-    RegisterValue rt = 0;
+    // RegisterValue alu_src1 = 0;
+    // RegisterValue alu_src2 = 0;
+    // RegisterValue immediate = 0;
+    // RegisterValue rs = 0;
+    // RegisterValue rt = 0;
+    RegisterValueUnion alu_src1 = 0;
+    RegisterValueUnion alu_src2 = 0;
+    RegisterValueUnion immediate = 0;
+    RegisterValueUnion rs = 0;
+    RegisterValueUnion rt = 0;
     unsigned stall_status = 0;
     /**
      * ALU OP as a number.
@@ -211,6 +229,7 @@ struct ExecuteInternalState {
     unsigned excause_num = 0;
     bool alu_src = false;
     bool alu_mul = false;
+    bool alu_vec = false;
     bool branch_bxx = false;
     bool alu_pc = false; // PC is input to ALU
 };
@@ -238,7 +257,8 @@ struct MemoryInterstage {
     Address predicted_next_inst_addr = 0_addr;
     Address computed_next_inst_addr = 0_addr;
     Address mem_addr = 0_addr; // Address used to access memory
-    RegisterValue towrite_val = 0;
+    // RegisterValue towrite_val = 0;
+    RegisterValueUnion towrite_val = 0;
     ExceptionCause excause = EXCAUSE_NONE;
     RegisterId num_rd = 0;
     bool memtoreg = false;
@@ -252,9 +272,12 @@ public:
 };
 
 struct MemoryInternalState {
-    RegisterValue mem_read_val = 0;
-    RegisterValue mem_write_val = 0;
-    RegisterValue mem_addr = 0;
+    // RegisterValue mem_read_val = 0;
+    // RegisterValue mem_write_val = 0;
+    // RegisterValue mem_addr = 0;
+    RegisterValueUnion mem_read_val = 0;
+    RegisterValueUnion mem_write_val = 0;
+    RegisterValueUnion mem_addr = 0;
     unsigned excause_num = 0;
     bool memwrite = false;
     bool memread = false;
@@ -286,7 +309,8 @@ struct MemoryState {
 struct WritebackInternalState {
     Instruction inst = Instruction::NOP;
     Address inst_addr = STAGEADDR_NONE;
-    RegisterValue value = 0;
+    // RegisterValue value = 0;
+    RegisterValueUnion value = 0;
     RegisterId num_rd = 0;
     bool regwrite = false;
     bool memtoreg = false;

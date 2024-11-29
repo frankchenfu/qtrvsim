@@ -52,7 +52,7 @@ Core::Core(
 
 void Core::step(bool skip_break) {
     emit step_started();
-    state.cycle_count++;
+    // state.cycle_count++;
     do_step(skip_break);
     emit step_done(state);
 }
@@ -212,7 +212,8 @@ enum ExceptionCause Core::memory_special(
     int mode,
     bool memread,
     bool memwrite,
-    RegisterValue &towrite_val,
+    // RegisterValue &towrite_val,
+    RegisterValueUnion &towrite_val,
     RegisterValue rt_value,
     Address mem_addr) {
     Q_UNUSED(mode)
@@ -258,7 +259,7 @@ enum ExceptionCause Core::memory_special(
         int32_t fetched_value;
         fetched_value = (int32_t)(mem_data->read_u32(mem_addr));
         towrite_val = amo32_operations(memctl, fetched_value, rt_value.as_u32());
-        mem_data->write_u32(mem_addr, towrite_val.as_u32());
+        mem_data->write_u32(mem_addr, towrite_val.i.as_u32());
         towrite_val = fetched_value;
         break;
     }
@@ -268,8 +269,36 @@ enum ExceptionCause Core::memory_special(
         int64_t fetched_value;
         fetched_value = (int64_t)(mem_data->read_u64(mem_addr));
         towrite_val = (uint64_t)amo64_operations(memctl, fetched_value, rt_value.as_u64());
-        mem_data->write_u64(mem_addr, towrite_val.as_u64());
+        mem_data->write_u64(mem_addr, towrite_val.i.as_u64());
         towrite_val = fetched_value;
+        break;
+    }
+    case AC_LR_VEC:
+    {
+        if (!memread) { break; }
+        state.LoadReservedRange = AddressRange(mem_addr, mem_addr + (Core::get_regs()->read_vl() * 4) - 1);
+        towrite_val = mem_data->read_vec_u32(mem_addr, Core::get_regs()->read_vl());
+        break;
+    }
+    // case AC_SC32:
+    //     if (!memwrite) { break; }
+    //     if (state.LoadReservedRange.contains(AddressRange(mem_addr, mem_addr + 3))) {
+    //         mem_data->write_u32(mem_addr, rt_value.as_u32());
+    //         towrite_val = 0;
+    //     } else {
+    //         towrite_val = 1;
+    //     }
+    //     state.LoadReservedRange.reset();
+    //     break;
+    case AC_SC_VEC:
+    {
+        if (!memwrite) { break; }
+        if (state.LoadReservedRange.contains(AddressRange(mem_addr, mem_addr + (Core::get_regs()->read_vl() * 4) - 1))) {
+            towrite_val = 0;
+        } else {
+            towrite_val = 1;
+        }
+        state.LoadReservedRange.reset();
         break;
     }
     default: break;
@@ -283,6 +312,7 @@ FetchState Core::fetch(PCInterstage pc, bool skip_break) {
 
     const Address inst_addr = Address(regs->read_pc());
     const Instruction inst(mem_program->read_u32(inst_addr));
+    // printf("Read %08x from %08x.\n", inst.data(), inst_addr.get_raw());
     ExceptionCause excause = EXCAUSE_NONE;
 
     if (!skip_break && hw_breaks.contains(inst_addr)) { excause = EXCAUSE_HWBREAK; }
@@ -307,6 +337,7 @@ FetchState Core::fetch(PCInterstage pc, bool skip_break) {
 }
 
 DecodeState Core::decode(const FetchInterstage &dt) {
+    // printf("get inst: %s\n", dt.inst.to_str(dt.inst_addr).toStdString().c_str());
     InstructionFlags flags;
     bool w_operation = this->xlen != Xlen::_64;
     AluCombinedOp alu_op {};
@@ -319,15 +350,66 @@ DecodeState Core::decode(const FetchInterstage &dt) {
         excause = EXCAUSE_INSN_ILLEGAL;
     }
 
+    uint8_t cycle_add = 0;
+    if (flags & IMF_MEM) {
+        if (flags & IMF_VEC)
+            cycle_add = regs->read_vl() + 36;
+        else
+            cycle_add = 36;
+    }
+    else if (flags & IMF_MUL) {
+        cycle_add = 8;
+    }
+    else if (flags & IMF_VEC) {
+        if (flags & IMF_VEC_MUL) {
+            cycle_add = regs->read_vl() * 4 + 4; // assume it is chained
+        }
+        else if (flags & IMF_VEC_REDSUM) {
+            cycle_add = (regs->read_vl() + 4) * 2; // 1 + 2 + 4 + ... +vl <= vl * 2
+        }
+        else if (flags & IMF_VEC_VL) {
+            cycle_add = 5;
+        }
+        else {
+            cycle_add = regs->read_vl() + 4;
+        }
+    }
+    else {
+        cycle_add = 5;
+    }
+    if ((flags & IMF_VEC_REDSUM) && (prev_inst_flags & IMF_VEC_MUL)) {
+        cycle_add -= regs->read_vl() + 4;
+    }
+    state.cycle_count += cycle_add;
+    prev_inst_flags = flags;
+
     RegisterId num_rs = (flags & (IMF_ALU_REQ_RS | IMF_ALU_RS_ID)) ? dt.inst.rs() : 0;
     RegisterId num_rt = (flags & IMF_ALU_REQ_RT) ? dt.inst.rt() : 0;
     RegisterId num_rd = (flags & IMF_REGWRITE) ? dt.inst.rd() : 0;
     // When instruction does not specify register, it is set to x0 as operations on x0 have no
     // side effects (not even visualization).
-    RegisterValue val_rs
-        = (flags & IMF_ALU_RS_ID) ? uint64_t(size_t(num_rs)) : regs->read_gp(num_rs);
-    RegisterValue val_rt = regs->read_gp(num_rt);
-    RegisterValue immediate_val = dt.inst.immediate();
+    // RegisterValue val_rs
+    //     = (flags & IMF_ALU_RS_ID) ? uint64_t(size_t(num_rs)) : regs->read_gp(num_rs);
+    // RegisterValue val_rt = regs->read_gp(num_rt);
+    // RegisterValue immediate_val = dt.inst.immediate();
+    RegisterValueUnion val_rs, val_rt;
+    if (flags & IMF_ALU_RS_ID) {
+        val_rs = RegisterValue(size_t(num_rs));
+    }
+    else if (bool(flags & IMF_VEC) && !bool(flags & IMF_MEM)) {
+        val_rs = regs->read_vr(num_rs);
+    }
+    else {
+        val_rs = regs->read_gp(num_rs);
+    }
+    if (flags & IMF_VEC_RT) {
+        val_rt = regs->read_vr(num_rt);
+    }
+    else {
+        val_rt = regs->read_gp(num_rt);
+    }
+    RegisterValueUnion immediate_val = RegisterValue(dt.inst.immediate());
+    // printf("[%s]: imm = %08x\n", dt.inst.to_str(dt.inst_addr).toStdString().c_str(), immediate_val.i.as_u32());
     const bool regwrite = flags & IMF_REGWRITE;
 
     CSR::Address csr_address = (flags & IMF_CSR) ? dt.inst.csr_address() : CSR::Address(0);
@@ -345,12 +427,21 @@ DecodeState Core::decode(const FetchInterstage &dt) {
     }
     if (flags & IMF_FORCE_W_OP)
         w_operation = true;
+    if (flags & IMF_VEC_VL) {
+        uint8_t avl = val_rs.i.as_u8();
+        avl = (avl > 32) ? 32 : avl;
+        regs->write_vl(avl);
+        // regs->write_gp(num_rd, RegisterValue(avl));
+        val_rs = RegisterValueUnion(avl);
+        val_rt = 0;
+    }
 
     return { DecodeInternalState {
                  .alu_op_num = static_cast<unsigned>(alu_op.alu_op),
                  .excause_num = static_cast<unsigned>(excause),
                  .inst_bus = dt.inst.data(),
                  .alu_mul = bool(flags & IMF_MUL),
+                 .alu_vec = bool(flags & IMF_VEC),
              },
              DecodeInterstage { .inst = dt.inst,
                                 .inst_addr = dt.inst_addr,
@@ -367,7 +458,8 @@ DecodeState Core::decode(const FetchInterstage &dt) {
                                 .ff_rs = FORWARD_NONE,
                                 .ff_rt = FORWARD_NONE,
                                 .alu_component = (flags & IMF_AMO) ? AluComponent::PASS :
-                                                 (flags & IMF_MUL) ? AluComponent::MUL : AluComponent::ALU,
+                                                 (flags & IMF_MUL) ? AluComponent::MUL :
+                                                 (bool(flags & IMF_VEC) && !bool(flags & IMF_MEM)) ? AluComponent::VEC : AluComponent::ALU,
                                 .aluop = alu_op,
                                 .memctl = mem_ctl,
                                 .num_rs = num_rs,
@@ -396,22 +488,41 @@ DecodeState Core::decode(const FetchInterstage &dt) {
 }
 
 ExecuteState Core::execute(const DecodeInterstage &dt) {
+    // printf("run inst: %s with aluop=%08x\n", dt.inst.to_str(dt.inst_addr).toStdString().c_str(), dt.alu_component);
     enum ExceptionCause excause = dt.excause;
     // TODO refactor to produce multiplexor index and multiplex function
-    const RegisterValue alu_fst = [=] {
-        if (dt.alu_pc) return RegisterValue(dt.inst_addr.get_raw());
+    // const RegisterValue alu_fst = [=] {
+    //     if (dt.alu_pc) return RegisterValue(dt.inst_addr.get_raw());
+    //     return dt.val_rs;
+    // }();
+    const RegisterValueUnion alu_fst = [=] {
+        if (dt.alu_pc) return RegisterValueUnion(dt.inst_addr.get_raw());
         return dt.val_rs;
     }();
-    const RegisterValue alu_sec = [=] {
+    // const RegisterValue alu_sec = [=] {
+    //     if (dt.csr_to_alu) return dt.csr_read_val;
+    //     if (dt.alusrc) return dt.immediate_val;
+    //     return dt.val_rt;
+    // }();
+    const RegisterValueUnion alu_sec = [=] {
         if (dt.csr_to_alu) return dt.csr_read_val;
         if (dt.alusrc) return dt.immediate_val;
         return dt.val_rt;
     }();
-    const RegisterValue alu_val = [=] {
-        if (excause != EXCAUSE_NONE) return RegisterValue(0);
-        return alu_combined_operate(dt.aluop, dt.alu_component, dt.w_operation, dt.alu_mod, alu_fst, alu_sec);
+    // const RegisterValue alu_val = [=] {
+    //     if (excause != EXCAUSE_NONE) return RegisterValue(0);
+    //     return alu_combined_operate(dt.aluop, dt.alu_component, dt.w_operation, dt.alu_mod, alu_fst, alu_sec);
+    // }();
+    const RegisterValueUnion alu_val = [=] {
+        if (excause != EXCAUSE_NONE) return RegisterValueUnion(0);
+        return alu_combined_operate(dt.aluop, dt.alu_component, dt.w_operation, dt.alu_mod, alu_fst, alu_sec, regs->read_vl());
     }();
-    const Address branch_jal_target = dt.inst_addr + dt.immediate_val.as_i64();
+    // const Address branch_jal_target = dt.inst_addr + dt.immediate_val.as_i64();
+    const Address branch_jal_target = dt.inst_addr + (
+        (dt.immediate_val.type == RegisterValueType::REGISTER_VALUE_TYPE_I) ?
+        dt.immediate_val.i.as_i64() : 0);
+    // printf("rs1 = %08x, rs2 = %08x, imm = %08x\n", alu_fst.i.as_u32(), alu_sec.i.as_u32(), dt.immediate_val.i.as_u32());
+    // printf("branch_jal_target = %08x\n", branch_jal_target.get_raw());
 
     const unsigned stall_status = [=] {
         if (dt.stall) return 1;
@@ -432,6 +543,7 @@ ExecuteState Core::execute(const DecodeInterstage &dt) {
                  .excause_num = static_cast<unsigned>(dt.excause),
                  .alu_src = dt.alusrc,
                  .alu_mul = dt.alu_component == AluComponent::MUL,
+                 .alu_vec = dt.alu_component == AluComponent::VEC,
                  .branch_bxx = dt.branch_bxx,
                  .alu_pc = dt.alu_pc,
              },
@@ -457,7 +569,8 @@ ExecuteState Core::execute(const DecodeInterstage &dt) {
                  .branch_jal = dt.branch_jal,
                  .branch_val = dt.branch_val,
                  .branch_jalr = dt.branch_jalr,
-                 .alu_zero = alu_val == 0,
+                 .alu_zero = (alu_val.type == RegisterValueType::REGISTER_VALUE_TYPE_I) ?
+                     (alu_val.i == 0) : false,
                  .csr = dt.csr,
                  .csr_write = dt.csr_write,
                  .xret = dt.xret,
@@ -465,8 +578,11 @@ ExecuteState Core::execute(const DecodeInterstage &dt) {
 }
 
 MemoryState Core::memory(const ExecuteInterstage &dt) {
-    RegisterValue towrite_val = dt.alu_val;
-    auto mem_addr = Address(get_xlen_from_reg(dt.alu_val));
+    // RegisterValue towrite_val = dt.alu_val;
+    // auto mem_addr = Address(get_xlen_from_reg(dt.alu_val));
+    RegisterValueUnion towrite_val = dt.alu_val;
+    Address mem_addr = Address((dt.alu_val.type == RegisterValueType::REGISTER_VALUE_TYPE_I) ?
+        get_xlen_from_reg(dt.alu_val.i) : 0);
     bool memread = dt.memread;
     bool memwrite = dt.memwrite;
     bool regwrite = dt.regwrite;
@@ -476,10 +592,10 @@ MemoryState Core::memory(const ExecuteInterstage &dt) {
     if (excause == EXCAUSE_NONE) {
         if (is_special_access(dt.memctl)) {
             excause = memory_special(
-                dt.memctl, dt.inst.rt(), memread, memwrite, towrite_val, dt.val_rt, mem_addr);
+                dt.memctl, dt.inst.rt(), memread, memwrite, towrite_val, dt.val_rt.i, mem_addr);
         } else if (is_regular_access(dt.memctl)) {
-            if (memwrite) { mem_data->write_ctl(dt.memctl, mem_addr, dt.val_rt); }
-            if (memread) { towrite_val = mem_data->read_ctl(dt.memctl, mem_addr); }
+            if (memwrite) { mem_data->write_ctl(dt.memctl, mem_addr, dt.val_rt, regs->read_vl()); }
+            if (memread) { towrite_val = mem_data->read_ctl(dt.memctl, mem_addr, regs->read_vl()); }
         } else {
             Q_ASSERT(dt.memctl == AC_NONE);
             // AC_NONE is memory NOP
@@ -506,7 +622,7 @@ MemoryState Core::memory(const ExecuteInterstage &dt) {
     } else if (dt.branch_jalr) {
         // JALR Jump register instruction (I-type)
         predictor->update(
-            dt.inst, dt.inst_addr, Address(get_xlen_from_reg(dt.alu_val)), BranchType::JUMP, BranchResult::TAKEN);
+            dt.inst, dt.inst_addr, Address(get_xlen_from_reg(dt.alu_val.i)), BranchType::JUMP, BranchResult::TAKEN);
     } else if (dt.branch_bxx) {
         // BXX Conditional branch instruction (B-type (alternative to S-type with different
         // immediate bit order))
@@ -519,7 +635,7 @@ MemoryState Core::memory(const ExecuteInterstage &dt) {
     if (control_state != nullptr && dt.is_valid && dt.excause == EXCAUSE_NONE) {
         control_state->increment_internal(CSR::Id::MINSTRET, 1);
         if (dt.csr_write) {
-            control_state->write(dt.csr_address, dt.alu_val);
+            control_state->write(dt.csr_address, dt.alu_val.i);
             csr_written = true;
         }
         if (dt.xret) {
@@ -559,10 +675,15 @@ MemoryState Core::memory(const ExecuteInterstage &dt) {
                  .predicted_next_inst_addr = dt.predicted_next_inst_addr,
                  .computed_next_inst_addr = computed_next_inst_addr,
                  .mem_addr = mem_addr,
-                 .towrite_val = [=]() -> RegisterValue {
-                     if (dt.csr) return dt.csr_read_val;
-                     if (dt.branch_jalr || dt.branch_jal) return dt.next_inst_addr.get_raw();
-                     return towrite_val;
+                //  .towrite_val = [=]() -> RegisterValue {
+                //      if (dt.csr) return dt.csr_read_val;
+                //      if (dt.branch_jalr || dt.branch_jal) return dt.next_inst_addr.get_raw();
+                //      return towrite_val;
+                //  }(),
+                 .towrite_val = [=]() -> RegisterValueUnion {
+                    if (dt.csr) return dt.csr_read_val;
+                    if (dt.branch_jalr || dt.branch_jal) return RegisterValueUnion(dt.next_inst_addr.get_raw());
+                    return towrite_val;
                  }(),
                  .excause = dt.excause,
                  .num_rd = dt.num_rd,
@@ -574,7 +695,14 @@ MemoryState Core::memory(const ExecuteInterstage &dt) {
 }
 
 WritebackState Core::writeback(const MemoryInterstage &dt) {
-    if (dt.regwrite) { regs->write_gp(dt.num_rd, dt.towrite_val); }
+    // if (dt.regwrite) { regs->write_gp(dt.num_rd, dt.towrite_val); }
+    if (dt.regwrite) {
+        if (dt.towrite_val.type == RegisterValueType::REGISTER_VALUE_TYPE_I) {
+            regs->write_gp(dt.num_rd, dt.towrite_val.i);
+        } else {
+            regs->write_vr(dt.num_rd, dt.towrite_val.v);
+        }
+    }
 
     return WritebackState { WritebackInternalState {
         .inst = (dt.excause == EXCAUSE_NONE)? dt.inst: Instruction::NOP,
@@ -588,7 +716,7 @@ WritebackState Core::writeback(const MemoryInterstage &dt) {
 
 Address Core::compute_next_inst_addr(const ExecuteInterstage &exec, bool branch_taken) const {
     if (branch_taken || exec.branch_jal) { return exec.branch_jal_target; }
-    if (exec.branch_jalr) { return Address(get_xlen_from_reg(exec.alu_val)); }
+    if (exec.branch_jalr) { return Address(get_xlen_from_reg(exec.alu_val.i)); }
     return exec.next_inst_addr;
 }
 
@@ -613,6 +741,7 @@ CoreSingle::CoreSingle(
 }
 
 void CoreSingle::do_step(bool skip_break) {
+    // printf("=========================================\n");
     Pipeline &p = state.pipeline;
 
     p.fetch = fetch(pc_if, skip_break);
@@ -621,6 +750,7 @@ void CoreSingle::do_step(bool skip_break) {
     p.memory = memory(p.execute.final);
     p.writeback = writeback(p.memory.final);
 
+    // printf("next inst mem: %08x\n", mem_wb.computed_next_inst_addr.get_raw());
     regs->write_pc(mem_wb.computed_next_inst_addr);
 
     if (mem_wb.excause != EXCAUSE_NONE) {
@@ -630,6 +760,7 @@ void CoreSingle::do_step(bool skip_break) {
         return;
     }
     prev_inst_addr = mem_wb.inst_addr;
+    // printf("write back inst mem = %08x\n", mem_wb.inst_addr.get_raw());
 }
 
 void CoreSingle::do_reset() {

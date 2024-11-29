@@ -21,7 +21,8 @@ using machine::Address;
 using machine::CoreState;
 using machine::Instruction;
 using machine::RegisterId;
-using machine::RegisterValue;
+// using machine::RegisterValue;
+using machine::RegisterValueUnion;
 
 static const std::unordered_map<unsigned, QString> EXCEPTION_NAME_TABLE = {
     { machine::EXCAUSE_NONE, QStringLiteral("NONE") },
@@ -117,7 +118,23 @@ const struct {
         { QStringLiteral("wb-RegWrite"), LENS(CoreState, pipeline.writeback.internal.regwrite) },
         { QStringLiteral("wb-MemToReg"), LENS(CoreState, pipeline.writeback.internal.memtoreg) },
     };
-    const unordered_map<QStringView, Lens<CoreState, RegisterValue>> REG {
+    // const unordered_map<QStringView, Lens<CoreState, RegisterValue>> REG {
+    const unordered_map<QStringView, Lens<CoreState, RegisterValueUnion>> REG {
+        { QStringLiteral("alu-res"), LENS(CoreState, pipeline.execute.result.alu_val) },
+        { QStringLiteral("alu-src1"), LENS(CoreState, pipeline.execute.internal.alu_src1) },
+        { QStringLiteral("alu-src2"), LENS(CoreState, pipeline.execute.internal.alu_src2) },
+        { QStringLiteral("decode-imm"), LENS(CoreState, pipeline.decode.result.immediate_val) },
+        { QStringLiteral("exec-imm"), LENS(CoreState, pipeline.execute.result.immediate_val) },
+        { QStringLiteral("decode-inst-bus"), LENS(CoreState, pipeline.decode.internal.inst_bus) },
+        { QStringLiteral("mem-write-val"),
+          LENS(CoreState, pipeline.memory.internal.mem_write_val) },
+        { QStringLiteral("mem-write-addr"), LENS(CoreState, pipeline.memory.internal.mem_addr) },
+        { QStringLiteral("mem-read-val"), LENS(CoreState, pipeline.memory.internal.mem_read_val) },
+        { QStringLiteral("decode-rs1"), LENS(CoreState, pipeline.decode.result.val_rs) },
+        { QStringLiteral("decode-rs2"), LENS(CoreState, pipeline.decode.result.val_rt) },
+        { QStringLiteral("exec-rs1"), LENS(CoreState, pipeline.execute.internal.rs) },
+        { QStringLiteral("exec-rs2"), LENS(CoreState, pipeline.execute.internal.rt) },
+        { QStringLiteral("wb"), LENS(CoreState, pipeline.writeback.internal.value) },
         { QStringLiteral("alu-res"), LENS(CoreState, pipeline.execute.result.alu_val) },
         { QStringLiteral("alu-src1"), LENS(CoreState, pipeline.execute.internal.alu_src1) },
         { QStringLiteral("alu-src2"), LENS(CoreState, pipeline.execute.internal.alu_src2) },

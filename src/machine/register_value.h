@@ -4,6 +4,7 @@
 #include "machine/machineconfig.h"
 
 #include <QMetaType>
+#include <array>
 
 namespace machine {
 
@@ -13,6 +14,7 @@ namespace machine {
  * TODO: make compile time option
  */
 using register_storage_t = uint64_t;
+using vector_register_storage_t = std::array<uint32_t, 32>;
 
 /**
  * Represents a value stored in register
@@ -116,8 +118,92 @@ private:
     register_storage_t data;
 };
 
+class VectorRegisterValue {
+public:
+    constexpr inline VectorRegisterValue(const vector_register_storage_t &value) : data(value) {};
+
+    constexpr inline VectorRegisterValue() : data({0}) {};
+
+    constexpr inline VectorRegisterValue(const VectorRegisterValue &other) = default;
+    constexpr inline VectorRegisterValue &operator=(const VectorRegisterValue &other) = default;
+
+    inline vector_register_storage_t as_vec() {
+        return data;
+    }
+
+    inline bool operator==(const VectorRegisterValue &other) const {
+        return data == other.data;
+    }
+    inline bool operator!=(const VectorRegisterValue &other) const { return !(other == *this); }
+    inline uint32_t &operator[](size_t index) { return data[index]; }
+
+    inline const uint32_t &operator[](size_t index) const { return data[index]; }
+    // constexpr inline VectorRegisterValue operator+(const VectorRegisterValue &other) const {
+    //     VectorRegisterValue result;
+    //     for (size_t i = 0; i < data.size(); i++) {
+    //         result.data[i] = data[i] + other.data[i];
+    //     }
+    //     return result;
+    // }
+    // constexpr inline VectorRegisterValue operator*(const VectorRegisterValue &other) const {
+    //     VectorRegisterValue result;
+    //     for (size_t i = 0; i < data.size(); i++) {
+    //         result.data[i] = data[i] * other.data[i];
+    //     }
+    //     return result;
+    // }
+    
+private:
+    vector_register_storage_t data;
+};
+
+enum RegisterValueType {
+    REGISTER_VALUE_TYPE_I,
+    REGISTER_VALUE_TYPE_V
+};
+struct RegisterValueUnion {
+    RegisterValueType type;
+    union {
+        RegisterValue i;
+        VectorRegisterValue v;
+    };
+    RegisterValueUnion() : type(REGISTER_VALUE_TYPE_I), i() {}
+    RegisterValueUnion(RegisterValue value) : type(REGISTER_VALUE_TYPE_I), i(value) {}
+    RegisterValueUnion(register_storage_t value) : type(REGISTER_VALUE_TYPE_I), i(RegisterValue(value)) {}
+    RegisterValueUnion(VectorRegisterValue value) : type(REGISTER_VALUE_TYPE_V), v(value) {}
+    RegisterValueUnion(vector_register_storage_t value) : type(REGISTER_VALUE_TYPE_V), v(VectorRegisterValue(value)) {}
+
+    RegisterValueUnion operator=(RegisterValue value) {
+        type = REGISTER_VALUE_TYPE_I;
+        i = value;
+        return *this;
+    }
+    RegisterValueUnion operator=(register_storage_t value) {
+        type = REGISTER_VALUE_TYPE_I;
+        i = RegisterValue(value);
+        return *this;
+    }
+    RegisterValueUnion operator=(VectorRegisterValue value) {
+        type = REGISTER_VALUE_TYPE_V;
+        v = value;
+        return *this;
+    }
+    RegisterValueUnion operator=(vector_register_storage_t value) {
+        type = REGISTER_VALUE_TYPE_V;
+        v = VectorRegisterValue(value);
+        return *this;
+    }
+
+    bool operator==(const RegisterValueUnion &other) const {
+        if (type != other.type) return false;
+        if (type == REGISTER_VALUE_TYPE_I) return i == other.i;
+        return v == other.v;
+    }
+};
+
 } // namespace machine
 
 Q_DECLARE_METATYPE(machine::RegisterValue)
+Q_DECLARE_METATYPE(machine::VectorRegisterValue)
 
 #endif // REGISTER_VALUE_H

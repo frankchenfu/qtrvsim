@@ -3,6 +3,7 @@
 
 #include "execute/alu_op.h"
 #include "execute/mul_op.h"
+#include "execute/vec_op.h"
 #include "register_value.h"
 
 #include <cstdint>
@@ -15,12 +16,14 @@ namespace machine {
 enum class AluComponent {
     ALU, //> RV32/64I
     MUL, //> RV32/64M
+    VEC, //> RV32/64V
     PASS, //> Pass operand A without change (used for AMO)
 };
 
 union AluCombinedOp {
     AluOp alu_op;
     MulOp mul_op;
+    VecOp vec_op;
 };
 
 /**
@@ -34,13 +37,17 @@ union AluCombinedOp {
  * @param b           operand 2
  * @return            result of specified ALU operation (always, no traps)
  */
-[[gnu::const]] RegisterValue alu_combined_operate(
+// [[gnu::const]] RegisterValue alu_combined_operate(
+[[gnu::const]] RegisterValueUnion alu_combined_operate(
     AluCombinedOp op,
     AluComponent component,
     bool w_operation,
     bool modified,
-    RegisterValue a,
-    RegisterValue b);
+    // RegisterValue a,
+    // RegisterValue b);
+    RegisterValueUnion a,
+    RegisterValueUnion b,
+    uint8_t vl = 0);
 
 /**
  * RV64I for OP and OP-IMM instructions
@@ -56,7 +63,8 @@ union AluCombinedOp {
  *                  integer type is returned to ensure correct signe extension
  *                  to arbitrary implementation of RegisterValue
  */
-[[gnu::const]] int64_t alu64_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b);
+// [[gnu::const]] int64_t alu64_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b);
+[[gnu::const]] int64_t alu64_operate(AluOp op, bool modified, RegisterValueUnion a, RegisterValueUnion b);
 
 /**
  * RV32I for OP and OP-IMM instructions and RV64I OP-32 and OP-IMM-32
@@ -72,7 +80,8 @@ union AluCombinedOp {
  *                  integer type is returned to ensure correct signe extension
  *                  to arbitrary implementation of RegisterValue
  */
-[[gnu::const]] int32_t alu32_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b);
+// [[gnu::const]] int32_t alu32_operate(AluOp op, bool modified, RegisterValue a, RegisterValue b);
+[[gnu::const]] int32_t alu32_operate(AluOp op, bool modified, RegisterValueUnion a, RegisterValueUnion b);
 
 /**
  * RV64 "M" for OP instructions
@@ -90,7 +99,8 @@ union AluCombinedOp {
  *            integer type is returned to ensure correct signe extension
  *            to arbitrary implementation of RegisterValue
  */
-[[gnu::const]] int64_t mul64_operate(MulOp op, RegisterValue a, RegisterValue b);
+// [[gnu::const]] int64_t mul64_operate(MulOp op, RegisterValue a, RegisterValue b);
+[[gnu::const]] int64_t mul64_operate(MulOp op, RegisterValueUnion a, RegisterValueUnion b);
 
 /**
  * RV32 "M" for OP instructions and RV64 "M" for OP-32 instructions
@@ -111,7 +121,10 @@ union AluCombinedOp {
  *            integer type is returned to ensure correct signe extension
  *            to arbitrary implementation of RegisterValue
  */
-[[gnu::const]] int32_t mul32_operate(MulOp op, RegisterValue a, RegisterValue b);
+// [[gnu::const]] int32_t mul32_operate(MulOp op, RegisterValue a, RegisterValue b);
+[[gnu::const]] int32_t mul32_operate(MulOp op, RegisterValueUnion a, RegisterValueUnion b);
+
+[[gnu::const]] RegisterValueUnion vec32_operate(VecOp op, RegisterValueUnion a, RegisterValueUnion b, uint8_t vl);
 
 } // namespace machine
 
